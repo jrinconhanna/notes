@@ -14,10 +14,11 @@
     button.secondary { background: #eee; color: #222; }
     #viewer { display: none; }
     #content { margin-top: 20px; }
-    #content h1, #richInput h1 { font-size: 26px; margin-top: 24px; margin-bottom: 12px; }
-    #content h2, #richInput h2 { font-size: 21px; margin-top: 24px; margin-bottom: 8px; color: #111; }
-    #content h3, #richInput h3 { font-size: 18px; margin-top: 20px; margin-bottom: 6px; color: #111; }
-    #content ul, #content ol, #richInput ul, #richInput ol { padding-left: 22px; margin-bottom: 14px; }
+    #content h1, #richInput h1 { font-size: 26px; margin: 24px 0 12px; font-weight: 700; }
+    #content h2, #richInput h2 { font-size: 21px; margin: 24px 0 8px; font-weight: 700; color: #111; }
+    #content h3, #richInput h3 { font-size: 18px; margin: 20px 0 6px; font-weight: 700; color: #111; }
+    #content p, #richInput p { margin: 0 0 12px; }
+    #content ul, #content ol, #richInput ul, #richInput ol { padding-left: 22px; margin: 0 0 14px; }
     #content li, #richInput li { margin-bottom: 6px; }
     #content a, #richInput a { color: #0969da; text-decoration: none; font-weight: 500; border-bottom: 1px solid #b6d4fe; }
     #content a:hover { border-bottom-color: #0969da; }
@@ -33,7 +34,7 @@
     <input id="titleInput" placeholder="Page Title (e.g., Theory of Impetus)" />
     <div id="richInput" contenteditable="true" data-placeholder="Copy and paste directly from any webpage or chat (headings, bold, bullets, and links stay intact)..."></div>
     <div class="hint">
-      Just highlight text on any webpage, press <strong>Cmd+C</strong>, and paste here with <strong>Cmd+V</strong>—all headings, bold text, bullets, and links will be preserved automatically.
+      Highlight text on any webpage, press <strong>Cmd+C</strong>, and paste here with <strong>Cmd+V</strong>.
     </div>
     <button onclick="publishPage()">Create Live Page</button>
     <button class="secondary" onclick="clearEditor()">Clear</button>
@@ -50,36 +51,17 @@
   </div>
 
   <script>
-    function cleanPastedHTML(container) {
-      // Strip inline styles, classes, and unsafe tags while keeping clean structure & links
-      const allowedTags = new Set(['H1','H2','H3','H4','P','BR','STRONG','B','EM','I','U','UL','OL','LI','A','BLOCKQUOTE','CODE','PRE']);
-      const walk = (node) => {
-        for (let i = node.childNodes.length - 1; i >= 0; i--) {
-          const child = node.childNodes[i];
-          if (child.nodeType === 1) {
-            if (['SCRIPT', 'STYLE', 'IFRAME', 'SVG', 'BUTTON', 'INPUT'].includes(child.tagName)) {
-              child.remove();
-              continue;
-            }
-            walk(child);
-            if (!allowedTags.has(child.tagName)) {
-              // Unwrap divs/spans while keeping their inner formatted content
-              while (child.firstChild) node.insertBefore(child.firstChild, child);
-              child.remove();
-            } else {
-              // Remove messy website styles/classes, keep only href on links
-              const href = child.tagName === 'A' ? child.getAttribute('href') : null;
-              for (const attr of [...child.attributes]) child.removeAttribute(attr.name);
-              if (href) {
-                child.setAttribute('href', href);
-                child.setAttribute('target', '_blank');
-                child.setAttribute('rel', 'noopener');
-              }
-            }
-          }
+    function sanitizeKeepStructure(container) {
+      container.querySelectorAll('script, style, iframe, svg, button, input').forEach(el => el.remove());
+      container.querySelectorAll('*').forEach(el => {
+        const href = el.tagName === 'A' ? el.getAttribute('href') : null;
+        for (const attr of [...el.attributes]) el.removeAttribute(attr.name);
+        if (href) {
+          el.setAttribute('href', href);
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noopener');
         }
-      };
-      walk(container);
+      });
       return container.innerHTML;
     }
 
@@ -100,7 +82,7 @@
     async function publishPage() {
       const title = document.getElementById('titleInput').value.trim() || 'Saved Note';
       const clone = document.getElementById('richInput').cloneNode(true);
-      const cleanHTML = cleanPastedHTML(clone);
+      const cleanHTML = sanitizeKeepStructure(clone);
       const payload = JSON.stringify({ t: title, h: cleanHTML });
       const hash = await compress(payload);
       window.location.hash = hash;
