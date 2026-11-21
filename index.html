@@ -4,21 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quick Bookmarkable Page</title>
+  <script src="https://jsdelivr.net"></script>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.65; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #222; }
-    textarea { width: 100%; height: 280px; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-family: inherit; }
+    textarea { width: 100%; height: 280px; padding: 12px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     input { width: 100%; padding: 10px 12px; font-size: 18px; font-weight: bold; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 12px; box-sizing: border-box; }
     button { background: #111; color: #fff; border: none; padding: 10px 18px; font-size: 15px; border-radius: 6px; cursor: pointer; margin-top: 12px; margin-right: 8px; }
     button.secondary { background: #eee; color: #222; }
     #viewer { display: none; }
     #content { margin-top: 20px; }
-    #content h2, #content h3 { margin-top: 24px; margin-bottom: 8px; color: #111; }
-    #content ul { padding-left: 22px; }
-    #content li { margin-bottom: 6px; }
+    #content h1 { font-size: 28px; margin-bottom: 16px; }
+    #content h2 { font-size: 21px; margin-top: 28px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+    #content h3 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; color: #111; }
+    #content ul { padding-left: 22px; margin-bottom: 16px; }
+    #content li { margin-bottom: 8px; }
     #content a { color: #0969da; text-decoration: none; font-weight: 500; border-bottom: 1px solid #b6d4fe; }
     #content a:hover { border-bottom-color: #0969da; }
     .hint { font-size: 13px; color: #666; margin-top: 8px; }
-    .bar { margin-top: 32px; padding-top: 16px; border-top: 1px solid #eee; font-size: 14px; color: #666; }
+    .bar { margin-top: 36px; padding-top: 16px; border-top: 1px solid #eee; font-size: 14px; color: #666; }
   </style>
 </head>
 <body>
@@ -27,9 +30,9 @@
   <div id="editor">
     <h2>Create a Bookmarkable Page</h2>
     <input id="titleInput" placeholder="Page Title (e.g., Theory of Impetus)" />
-    <textarea id="textInput" placeholder="Paste your text, links, or notes here..."></textarea>
+    <textarea id="textInput" placeholder="Paste Markdown or notes here..."></textarea>
     <div class="hint">
-      Supports clickable links: <code>[Wikipedia](https://wikipedia.org)</code> or plain <code>https://...</code> URLs, plus <code>**bold**</code>, <code>### Headings</code>, and <code>* bullets</code>.
+      Full Markdown supported: <code>### Headings</code>, <code>**bold**</code>, <code>* italics</code>, <code>* bullets</code>, and <code>[Link Name](https://...)</code>.
     </div>
     <button onclick="publishPage()">Create Live Page</button>
   </div>
@@ -46,42 +49,6 @@
 
   <script>
     let rawText = '';
-
-    function renderFormatted(text) {
-      let html = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-      html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-      html = html.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
-      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-      const lines = html.split('\n');
-      let out = [];
-      let inList = false;
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('### ')) {
-          if (inList) { out.push('</ul>'); inList = false; }
-          out.push('<h3>' + trimmed.slice(4) + '</h3>');
-        } else if (trimmed.startsWith('## ')) {
-          if (inList) { out.push('</ul>'); inList = false; }
-          out.push('<h2>' + trimmed.slice(3) + '</h2>');
-        } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
-          if (!inList) { out.push('<ul>'); inList = true; }
-          out.push('<li>' + trimmed.slice(2) + '</li>');
-        } else if (trimmed === '') {
-          if (inList) { out.push('</ul>'); inList = false; }
-        } else {
-          if (inList) { out.push('</ul>'); inList = false; }
-          out.push('<p>' + line + '</p>');
-        }
-      }
-      if (inList) out.push('</ul>');
-      return out.join('');
-    }
 
     async function compress(str) {
       const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -118,7 +85,9 @@
         rawText = data.c;
         document.title = data.t;
         document.getElementById('pageTitle').textContent = data.t;
-        document.getElementById('content').innerHTML = renderFormatted(data.c);
+        // Convert pasted • bullets to standard Markdown * bullets automatically
+        const normalized = data.c.replace(/^\s*•\s+/gm, '* ');
+        document.getElementById('content').innerHTML = marked.parse(normalized);
         document.getElementById('editor').style.display = 'none';
         document.getElementById('viewer').style.display = 'block';
       } catch (e) {
