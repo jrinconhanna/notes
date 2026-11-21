@@ -4,21 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quick Bookmarkable Page</title>
-  <script src="https://jsdelivr.net"></script>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.65; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #222; }
-    textarea { width: 100%; height: 280px; padding: 12px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     input { width: 100%; padding: 10px 12px; font-size: 18px; font-weight: bold; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 12px; box-sizing: border-box; }
+    #richInput { width: 100%; min-height: 280px; max-height: 500px; overflow-y: auto; padding: 14px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; background: #fff; outline: none; }
+    #richInput:focus { border-color: #111; }
+    #richInput:empty:before { content: attr(data-placeholder); color: #999; pointer-events: none; }
     button { background: #111; color: #fff; border: none; padding: 10px 18px; font-size: 15px; border-radius: 6px; cursor: pointer; margin-top: 12px; margin-right: 8px; }
     button.secondary { background: #eee; color: #222; }
     #viewer { display: none; }
     #content { margin-top: 20px; }
-    #content h1 { font-size: 28px; margin-bottom: 16px; }
-    #content h2 { font-size: 21px; margin-top: 28px; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-    #content h3 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; color: #111; }
-    #content ul { padding-left: 22px; margin-bottom: 16px; }
-    #content li { margin-bottom: 8px; }
-    #content a { color: #0969da; text-decoration: none; font-weight: 500; border-bottom: 1px solid #b6d4fe; }
+    #content h1, #richInput h1 { font-size: 26px; margin-top: 24px; margin-bottom: 12px; }
+    #content h2, #richInput h2 { font-size: 21px; margin-top: 24px; margin-bottom: 8px; color: #111; }
+    #content h3, #richInput h3 { font-size: 18px; margin-top: 20px; margin-bottom: 6px; color: #111; }
+    #content ul, #content ol, #richInput ul, #richInput ol { padding-left: 22px; margin-bottom: 14px; }
+    #content li, #richInput li { margin-bottom: 6px; }
+    #content a, #richInput a { color: #0969da; text-decoration: none; font-weight: 500; border-bottom: 1px solid #b6d4fe; }
     #content a:hover { border-bottom-color: #0969da; }
     .hint { font-size: 13px; color: #666; margin-top: 8px; }
     .bar { margin-top: 36px; padding-top: 16px; border-top: 1px solid #eee; font-size: 14px; color: #666; }
@@ -30,11 +31,12 @@
   <div id="editor">
     <h2>Create a Bookmarkable Page</h2>
     <input id="titleInput" placeholder="Page Title (e.g., Theory of Impetus)" />
-    <textarea id="textInput" placeholder="Paste Markdown or notes here..."></textarea>
+    <div id="richInput" contenteditable="true" data-placeholder="Copy and paste directly from any webpage or chat (headings, bold, bullets, and links stay intact)..."></div>
     <div class="hint">
-      Full Markdown supported: <code>### Headings</code>, <code>**bold**</code>, <code>* italics</code>, <code>* bullets</code>, and <code>[Link Name](https://...)</code>.
+      Just highlight text on any webpage, press <strong>Cmd+C</strong>, and paste here with <strong>Cmd+V</strong>—all headings, bold text, bullets, and links will be preserved automatically.
     </div>
     <button onclick="publishPage()">Create Live Page</button>
+    <button class="secondary" onclick="clearEditor()">Clear</button>
   </div>
 
   <!-- VIEWER MODE -->
@@ -48,7 +50,38 @@
   </div>
 
   <script>
-    let rawText = '';
+    function cleanPastedHTML(container) {
+      // Strip inline styles, classes, and unsafe tags while keeping clean structure & links
+      const allowedTags = new Set(['H1','H2','H3','H4','P','BR','STRONG','B','EM','I','U','UL','OL','LI','A','BLOCKQUOTE','CODE','PRE']);
+      const walk = (node) => {
+        for (let i = node.childNodes.length - 1; i >= 0; i--) {
+          const child = node.childNodes[i];
+          if (child.nodeType === 1) {
+            if (['SCRIPT', 'STYLE', 'IFRAME', 'SVG', 'BUTTON', 'INPUT'].includes(child.tagName)) {
+              child.remove();
+              continue;
+            }
+            walk(child);
+            if (!allowedTags.has(child.tagName)) {
+              // Unwrap divs/spans while keeping their inner formatted content
+              while (child.firstChild) node.insertBefore(child.firstChild, child);
+              child.remove();
+            } else {
+              // Remove messy website styles/classes, keep only href on links
+              const href = child.tagName === 'A' ? child.getAttribute('href') : null;
+              for (const attr of [...child.attributes]) child.removeAttribute(attr.name);
+              if (href) {
+                child.setAttribute('href', href);
+                child.setAttribute('target', '_blank');
+                child.setAttribute('rel', 'noopener');
+              }
+            }
+          }
+        }
+      };
+      walk(container);
+      return container.innerHTML;
+    }
 
     async function compress(str) {
       const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
@@ -66,8 +99,9 @@
 
     async function publishPage() {
       const title = document.getElementById('titleInput').value.trim() || 'Saved Note';
-      const text = document.getElementById('textInput').value;
-      const payload = JSON.stringify({ t: title, c: text });
+      const clone = document.getElementById('richInput').cloneNode(true);
+      const cleanHTML = cleanPastedHTML(clone);
+      const payload = JSON.stringify({ t: title, h: cleanHTML });
       const hash = await compress(payload);
       window.location.hash = hash;
       loadFromHash();
@@ -82,12 +116,9 @@
       }
       try {
         const data = JSON.parse(await decompress(hash));
-        rawText = data.c;
         document.title = data.t;
         document.getElementById('pageTitle').textContent = data.t;
-        // Convert pasted • bullets to standard Markdown * bullets automatically
-        const normalized = data.c.replace(/^\s*•\s+/gm, '* ');
-        document.getElementById('content').innerHTML = marked.parse(normalized);
+        document.getElementById('content').innerHTML = data.h || data.c || '';
         document.getElementById('editor').style.display = 'none';
         document.getElementById('viewer').style.display = 'block';
       } catch (e) {
@@ -97,9 +128,14 @@
 
     function editPage() {
       document.getElementById('titleInput').value = document.getElementById('pageTitle').textContent;
-      document.getElementById('textInput').value = rawText;
+      document.getElementById('richInput').innerHTML = document.getElementById('content').innerHTML;
       window.location.hash = '';
       loadFromHash();
+    }
+
+    function clearEditor() {
+      document.getElementById('titleInput').value = '';
+      document.getElementById('richInput').innerHTML = '';
     }
 
     window.addEventListener('hashchange', loadFromHash);
